@@ -1,19 +1,19 @@
-import smtplib
 import os
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
+import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import RedirectResponse
 from urllib.parse import unquote
 
 app = FastAPI(
     title="SC5Mail API",
-    description="Сервис автоматической рассылки писем и OTP-кодов",
+    description="Сервис автоматической рассылки писем через HTTP API Brevo",
     version="5.0"
 )
 
-EMAIL = "servicecodes5@gmail.com"
-PASS = os.environ.get("PASS")
+# Настройки HTTP API Brevo
+BREVO_API_URL = "https://api.brevo.com/v3/smtp/email"
+BREVO_API_KEY = os.getenv("BREVO_API_KEY")
+SENDER_EMAIL = "servicecodes5@gmail.com"
 
 def load_template():
     try:
@@ -30,9 +30,29 @@ def load_template():
             "Esli eto ne vy, proignoriruyte eto soobshenie. Vozmojno kto to oshibsya e-mailom.\n"
             "S uvajeniem, {Nazvanie-Kompanii}\n\n"
             "Ispolzovan servis rassylki ServiceCode5 (SC5Mails)\n"
-            "SC5 Web-site: sc5mails.site\n"
+            "SC5 Web-site: www.sc5mails.space\n"
             "Tex. Podderjka sayta: {ssylka-na-tex-podderjku}"
         )
+
+def send_via_brevo_api(to_email: str, subject: str, html_content: str, sender_name: str = "SC5Mail"):
+    headers = {
+        "accept": "application/json",
+        "api-key": BREVO_API_KEY,
+        "content-type": "application/json"
+    }
+    
+    payload = {
+        "sender": {"name": sender_name, "email": SENDER_EMAIL},
+        "to": [{"email": to_email}],
+        "subject": subject,
+        "textContent": html_content
+    }
+
+    response = requests.post(BREVO_API_URL, json=payload, headers=headers)
+    
+    if response.status_code not in [200, 201, 202]:
+        raise Exception(f"Ошибка API Brevo: {response.text}")
+    return response.json()
 
 @app.get("/", include_in_schema=False)
 async def root():
@@ -44,7 +64,7 @@ async def check_status():
         "status": "online",
         "service": "SC5Mail API",
         "version": "5.0",
-        "smtp_provider": "gmail"
+        "method": "Brevo HTTP API (Port 443)"
     }
 
 @app.get("/api/send_simple/{to_email}/{subject}/{message:path}", tags=["Email API"])
@@ -53,17 +73,9 @@ async def send_simple_email(to_email: str, subject: str, message: str):
         subject = unquote(subject)
         message = unquote(message)
 
-        msg = MIMEMultipart()
-        msg['From'] = f"SC5Mail <{EMAIL}>"
-        msg['To'] = to_email
-        msg['Subject'] = subject
-        msg.attach(MIMEText(message, 'plain', 'utf-8'))
+        send_via_brevo_api(to_email, subject, message, sender_name="SC5Mail")
 
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(EMAIL, PASS)
-            server.send_message(msg)
-
-        return {"status": "success", "message": f"Простое письмо отправлено на {to_email}"}
+        return {"status": "success", "message": f"Письмо успешно отправлено на {to_email}"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -106,17 +118,9 @@ async def send_templated_email(
             }
         )
 
-        msg = MIMEMultipart()
-        msg['From'] = f"{company_name} <{EMAIL}>"
-        msg['To'] = to_email
-        msg['Subject'] = subject
-        msg.attach(MIMEText(body_text, 'plain', 'utf-8'))
+        send_via_brevo_api(to_email, subject, body_text, sender_name=company_name)
 
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(EMAIL, PASS)
-            server.send_message(msg)
-
-        return {"status": "success", "message": f"Письмо успешно отправлено на {to_email}"}
+        return {"status": "success", "message": f"Письмо по шаблону успешно отправлено на {to_email}"}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
