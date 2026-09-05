@@ -15,5 +15,5 @@ IP-адрес: {IP}
 Команда {Nazvanie-Kompanii}
 
 Использован сервис рассылки ServiceCode5 (SC5Mails)
-Веб-сайт SC5: sc5mails.site
+Веб-сайт SC5: www.sc5mails.space
 Техническая поддержка: {ssylka-na-tex-podderjku}
